@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stellar Forge — Idle Universe</title>
+<meta name="description" content="Stellar Forge: an addictive idle / incremental game. Forge stardust, build a cosmic empire, collapse it into singularity shards, and do it all again — bigger.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌟</text></svg>">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="starfield"></canvas>
+
+<header id="topbar">
+  <div class="brand">🌟 <span>Stellar&nbsp;Forge</span></div>
+  <div id="news-ticker" title="Cosmic news"></div>
+  <div class="topbar-right">
+    <span id="shard-badge" class="shard-badge" title="Singularity Shards boost all production">💠 <b id="shard-count">0</b></span>
+  </div>
+</header>
+
+<main id="layout">
+
+  <!-- LEFT: the forge -->
+  <section id="forge-panel" class="panel">
+    <div class="resource-display">
+      <div id="stardust-count" class="big-number">0</div>
+      <div class="resource-label">stardust</div>
+      <div id="sps-display" class="sub-stat">0 per second</div>
+      <div id="click-display" class="sub-stat dim">0 per click</div>
+    </div>
+    <div id="star-wrap">
+      <button id="star-button" aria-label="Forge stardust">
+        <span class="star-core">🌟</span>
+      </button>
+    </div>
+    <div id="forge-hint" class="forge-hint">Click the star to forge stardust</div>
+  </section>
+
+  <!-- MIDDLE: tabs -->
+  <section id="center-panel" class="panel">
+    <nav id="tabs">
+      <button class="tab-btn active" data-tab="upgrades">Upgrades <span id="upgrade-notify" class="notify hidden"></span></button>
+      <button class="tab-btn" data-tab="prestige">Prestige <span id="prestige-notify" class="notify hidden"></span></button>
+      <button class="tab-btn" data-tab="achievements">Feats <span id="ach-count" class="tab-count"></span></button>
+      <button class="tab-btn" data-tab="stats">Stats</button>
+      <button class="tab-btn" data-tab="settings">Settings</button>
+    </nav>
+
+    <div id="tab-upgrades" class="tab-page active">
+      <div id="upgrade-list" class="upgrade-grid"></div>
+      <p id="no-upgrades" class="empty-note hidden">No upgrades available right now — keep forging, more will reveal themselves.</p>
+    </div>
+
+    <div id="tab-prestige" class="tab-page">
+      <div class="prestige-hero">
+        <h2>💠 Collapse into a Singularity</h2>
+        <p>Reset your stardust, generators and upgrades in exchange for <b>Singularity Shards</b>.
+           Each shard permanently boosts all production by <b><span id="shard-bonus-each">10</span>%</b>.</p>
+        <div class="prestige-stats">
+          <div><span class="dim">Current bonus</span><b id="prestige-current-bonus">+0%</b></div>
+          <div><span class="dim">Shards on collapse</span><b id="prestige-pending">0</b></div>
+          <div><span class="dim">Bonus after</span><b id="prestige-after-bonus">+0%</b></div>
+        </div>
+        <button id="prestige-button" disabled>Collapse the Forge</button>
+        <p class="dim small" id="prestige-req">Reach 1.00 B lifetime stardust to earn your first shard.</p>
+      </div>
+      <h3 class="section-title">Shard Upgrades <span class="dim small">(permanent, survive collapse)</span></h3>
+      <div id="prestige-upgrade-list" class="upgrade-grid"></div>
+    </div>
+
+    <div id="tab-achievements" class="tab-page">
+      <p class="dim small">Each feat permanently grants <b>+2% production</b>. Hunt them all.</p>
+      <div id="achievement-list" class="ach-grid"></div>
+    </div>
+
+    <div id="tab-stats" class="tab-page">
+      <div id="stats-list" class="stats-grid"></div>
+    </div>
+
+    <div id="tab-settings" class="tab-page">
+      <div class="settings-block">
+        <h3 class="section-title">Save</h3>
+        <p class="dim small">The game autosaves every 20 seconds and when you close the tab. Offline progress is earned while you're away.</p>
+        <div class="btn-row">
+          <button id="save-now" class="ghost-btn">💾 Save now</button>
+          <button id="export-save" class="ghost-btn">📤 Export save</button>
+          <button id="import-save" class="ghost-btn">📥 Import save</button>
+        </div>
+        <textarea id="save-io" placeholder="Exported save appears here. Paste a save here and press Import." spellcheck="false"></textarea>
+      </div>
+      <div class="settings-block">
+        <h3 class="section-title">Options</h3>
+        <label class="toggle-row"><input type="checkbox" id="opt-sound" checked> Click sounds</label>
+        <label class="toggle-row"><input type="checkbox" id="opt-particles" checked> Click particles &amp; floating numbers</label>
+      </div>
+      <div class="settings-block danger-zone">
+        <h3 class="section-title">Danger zone</h3>
+        <button id="hard-reset" class="danger-btn">☠️ Hard reset (wipe everything)</button>
+      </div>
+      <p class="dim small footer-note">Stellar Forge · made with ❤ and gravity · your progress lives in this browser</p>
+    </div>
+  </section>
+
+  <!-- RIGHT: generators -->
+  <section id="generator-panel" class="panel">
+    <div class="gen-header">
+      <h2 class="section-title">Generators</h2>
+      <div id="buy-amount-switch">
+        <button data-amt="1" class="active">×1</button>
+        <button data-amt="10">×10</button>
+        <button data-amt="100">×100</button>
+        <button data-amt="max">Max</button>
+      </div>
+    </div>
+    <div id="generator-list"></div>
+  </section>
+
+</main>
+
+<div id="toast-zone"></div>
+
+<div id="modal-backdrop" class="hidden">
+  <div id="modal-box">
+    <h2 id="modal-title"></h2>
+    <div id="modal-body"></div>
+    <div class="btn-row">
+      <button id="modal-ok">Continue</button>
+      <button id="modal-cancel" class="ghost-btn hidden">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/game.js"></script>
+</body>
+</html>
