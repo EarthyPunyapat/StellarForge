@@ -15,6 +15,7 @@
   <div class="brand">🌟 <span>Stellar&nbsp;Forge</span></div>
   <div id="news-ticker" title="Cosmic news"></div>
   <div class="topbar-right">
+    <button id="gift-badge" class="shard-badge gift-badge" title="Daily gift — claim it every day to grow your streak!" aria-label="Daily gift">🎁<span id="gift-dot" class="gift-dot hidden"></span></button>
     <span id="shard-badge" class="shard-badge" title="Singularity Shards boost all production">💠 <b id="shard-count">0</b></span>
   </div>
 </header>
@@ -28,6 +29,7 @@
       <div class="resource-label">stardust</div>
       <div id="sps-display" class="sub-stat">0 per second</div>
       <div id="click-display" class="sub-stat dim">0 per click</div>
+      <div id="buff-chip" class="buff-chip hidden">⚡ ×7 Surge</div>
     </div>
     <div id="star-wrap">
       <button id="star-button" aria-label="Forge stardust">
@@ -41,8 +43,11 @@
   <section id="center-panel" class="panel">
     <nav id="tabs">
       <button class="tab-btn active" data-tab="upgrades">Upgrades <span id="upgrade-notify" class="notify hidden"></span></button>
+      <button class="tab-btn" data-tab="lab">Lab</button>
+      <button class="tab-btn" data-tab="trials">Trials</button>
       <button class="tab-btn" data-tab="prestige">Prestige <span id="prestige-notify" class="notify hidden"></span></button>
       <button class="tab-btn" data-tab="achievements">Feats <span id="ach-count" class="tab-count"></span></button>
+      <button class="tab-btn" data-tab="codex">📖 Codex <span id="codex-count" class="tab-count"></span></button>
       <button class="tab-btn" data-tab="stats">Stats</button>
       <button class="tab-btn" data-tab="settings">Settings</button>
     </nav>
@@ -52,7 +57,34 @@
       <p id="no-upgrades" class="empty-note hidden">No upgrades available right now — keep forging, more will reveal themselves.</p>
     </div>
 
+    <div id="tab-lab" class="tab-page">
+      <p class="dim small">The Research Lab runs <b>one project at a time</b>. Projects finish in real time — even while you're away. Effects are permanent.</p>
+      <div id="lab-list" class="upgrade-grid"></div>
+    </div>
+
+    <div id="tab-trials" class="tab-page">
+      <p class="dim small">Cosmic Trials are self-imposed challenges. Entering <b>resets your run</b>; finishing grants a <b>permanent reward</b>.</p>
+      <div id="trial-banner" class="trial-banner hidden"></div>
+      <div id="trial-list" class="upgrade-grid"></div>
+    </div>
+
     <div id="tab-prestige" class="tab-page">
+      <div id="ascend-hero" class="prestige-hero ascend-hero">
+        <h2>✧ Transcend Reality</h2>
+        <p>Melt this entire universe down into <b>Cosmic Essence ✧</b> and spend it on perks that outlive everything.
+           Resets your run <b>and research</b>; keeps shards, wonders, codex, trials, feats and all essence.</p>
+        <div class="prestige-stats">
+          <div><span class="dim">Essence held</span><b id="ascend-balance">0</b></div>
+          <div><span class="dim">✧ on ascension</span><b id="ascend-pending">0</b></div>
+          <div><span class="dim">Ascensions</span><b id="ascend-count">0</b></div>
+        </div>
+        <button id="ascend-button" disabled>Transcend Reality</button>
+        <p class="dim small" id="ascend-req">Forge 1.00 Qa lifetime stardust to earn your first ✧.</p>
+      </div>
+
+      <h3 class="section-title">✧ Essence Perks <span id="essence-chip" class="essence-chip">✧ 0</span> <span class="dim small">(permanent — survive everything)</span></h3>
+      <div id="perk-tree" class="perk-tree"></div>
+
       <div class="prestige-hero">
         <h2>💠 Collapse into a Singularity</h2>
         <p>Reset your stardust, generators and upgrades in exchange for <b>Singularity Shards</b>.
@@ -67,6 +99,9 @@
       </div>
       <h3 class="section-title">Shard Upgrades <span class="dim small">(permanent, survive collapse)</span></h3>
       <div id="prestige-upgrade-list" class="upgrade-grid"></div>
+
+      <h3 class="section-title wonder-title">🏛️ Cosmic Wonders <span class="dim small">(monumental one-off builds, in order)</span></h3>
+      <div id="wonder-list" class="upgrade-grid"></div>
     </div>
 
     <div id="tab-achievements" class="tab-page">
@@ -74,7 +109,24 @@
       <div id="achievement-list" class="ach-grid"></div>
     </div>
 
+    <div id="tab-codex" class="tab-page">
+      <p class="dim small">The Cosmic Codex gathers everything the forge has taught you. Sealed entries reveal themselves as you play — reading them is its own reward.</p>
+      <div id="codex-list"></div>
+    </div>
+
     <div id="tab-stats" class="tab-page">
+      <div class="sparkline-block">
+        <h3 class="section-title">Production — last 20 minutes</h3>
+        <canvas id="sps-sparkline" width="260" height="60"></canvas>
+      </div>
+      <div class="share-block">
+        <h3 class="section-title">Production share</h3>
+        <div id="prod-share"></div>
+      </div>
+      <div class="share-block">
+        <h3 class="section-title">Top producers (all-time this run)</h3>
+        <div id="top-producers"></div>
+      </div>
       <div id="stats-list" class="stats-grid"></div>
     </div>
 
@@ -86,13 +138,40 @@
           <button id="save-now" class="ghost-btn">💾 Save now</button>
           <button id="export-save" class="ghost-btn">📤 Export save</button>
           <button id="import-save" class="ghost-btn">📥 Import save</button>
+          <button id="download-save" class="ghost-btn">⬇️ Download .json</button>
+          <button id="open-import-file" class="ghost-btn">📂 Load from file…</button>
         </div>
         <textarea id="save-io" placeholder="Exported save appears here. Paste a save here and press Import." spellcheck="false"></textarea>
+        <input type="file" id="import-file" accept=".json,application/json" class="hidden">
+      </div>
+      <div class="settings-block">
+        <h3 class="section-title">Save slots</h3>
+        <div class="toggle-row notation-row">
+          <span>Active slot:</span>
+          <label><input type="radio" name="slot" value="1" checked> Slot 1</label>
+          <label><input type="radio" name="slot" value="2"> Slot 2</label>
+          <label><input type="radio" name="slot" value="3"> Slot 3</label>
+          <button id="whats-new" class="ghost-btn">📜 What's New</button>
+        </div>
+        <p class="dim small">Switching saves your current forge first, then loads the target — a preview appears when that slot already holds a forge.</p>
       </div>
       <div class="settings-block">
         <h3 class="section-title">Options</h3>
         <label class="toggle-row"><input type="checkbox" id="opt-sound" checked> Click sounds</label>
+        <div class="toggle-row volume-row">
+          <span>🔊 Volume</span>
+          <input type="range" id="opt-volume" min="0" max="100" step="1" value="70" aria-label="Master volume">
+          <span id="opt-volume-val" class="dim small">70</span>
+        </div>
         <label class="toggle-row"><input type="checkbox" id="opt-particles" checked> Click particles &amp; floating numbers</label>
+        <label class="toggle-row"><input type="checkbox" id="opt-automation" checked> Enable automation <span class="dim small">(Auto-Assembler · Upgrade Daemon)</span></label>
+        <label class="toggle-row hidden" id="autoascend-row"><input type="checkbox" id="opt-autoascend"> ✧ Auto-ascend at 10+ pending essence</label>
+      <div class="toggle-row notation-row">
+        <span>Number notation:</span>
+        <label><input type="radio" name="notation" value="suffixes" checked> 1.50 K</label>
+        <label><input type="radio" name="notation" value="scientific"> 1.50e3</label>
+        <label><input type="radio" name="notation" value="engineering"> 1.5e3</label>
+      </div>
       </div>
       <div class="settings-block danger-zone">
         <h3 class="section-title">Danger zone</h3>
@@ -118,10 +197,10 @@
 
 </main>
 
-<div id="toast-zone"></div>
+<div id="toast-zone" aria-live="polite"></div>
 
 <div id="modal-backdrop" class="hidden">
-  <div id="modal-box">
+  <div id="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <h2 id="modal-title"></h2>
     <div id="modal-body"></div>
     <div class="btn-row">

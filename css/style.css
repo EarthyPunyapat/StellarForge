@@ -513,4 +513,255 @@ button.ghost-btn:hover, #modal-ok:hover { background: rgba(124, 140, 255, 0.25);
   #news-ticker { display: none; }
   .big-number { font-size: 1.9rem; }
   #star-button { width: 150px; height: 150px; font-size: 72px; }
+  /* mobile tap-target pass */
+  .gen-row { min-height: 56px; }
+  .upgrade-card { min-height: 44px; }
+  #buy-amount-switch {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    padding: 6px 0;
+    background: inherit;
+  }
+  #modal-box { max-height: 85vh; overflow-y: auto; }
+}
+
+/* ---------- accessibility ---------- */
+:focus-visible {
+  outline: 2px solid var(--border-bright);
+  outline-offset: 2px;
+}
+#star-button {
+  touch-action: manipulation; /* kill double-tap zoom on mobile */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ---------- golden star buff chip ---------- */
+.buff-chip {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--gold);
+  color: var(--gold);
+  font-weight: 700;
+  font-size: 0.85rem;
+  background: rgba(255, 215, 94, 0.08);
+  animation: buff-pulse 1s ease-in-out infinite alternate;
+}
+@keyframes buff-pulse {
+  from { box-shadow: 0 0 5px rgba(255, 215, 94, 0.25); }
+  to   { box-shadow: 0 0 16px rgba(255, 215, 94, 0.6); }
+}
+
+/* =====================  RESEARCH LAB  ===================== */
+
+.lab-card.running { border-color: var(--accent); }
+.lab-card .u-cost.done { color: var(--good); }
+.r-progress {
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  flex: 1;
+}
+.r-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--gold), #fff);
+  transition: width 0.4s ease;
+}
+
+/* =====================  COSMIC WONDERS  ===================== */
+
+.wonder-title { margin-top: 26px; }
+.wonder-card {
+  border: 1px solid rgba(255, 215, 94, 0.35);
+  background: linear-gradient(160deg, rgba(255, 215, 94, 0.06), rgba(255, 255, 255, 0.02));
+}
+.wonder-card.built {
+  border-color: var(--good);
+  opacity: 0.85;
+  cursor: default;
+}
+.wonder-card.locked-wonder { opacity: 0.5; cursor: not-allowed; }
+.wonder-card .done { color: var(--good); }
+
+/* =====================  COSMIC TRIALS  ===================== */
+
+.trial-banner {
+  border: 1px solid var(--gold);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  color: var(--gold);
+  background: rgba(255, 215, 94, 0.06);
+}
+/* Wave 5: live Speedrun countdown inside the trial banner */
+.trial-clock {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 10px;
+  border: 1px solid var(--gold);
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+  font-weight: bold;
+  background: rgba(255, 215, 94, 0.12);
+}
+.trial-clock.urgent { animation: clock-pulse 1s steps(2) infinite; }
+@keyframes clock-pulse { 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) {
+  .trial-clock.urgent { animation: none; }
+}
+/* Wave 5: top producers (all-time this run) rows */
+/* Wave 5: What's New changelog list */
+.changelog-list { margin: 0; padding-left: 20px; text-align: left; }
+.changelog-list li { margin: 6px 0; }
+.tp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+}
+.tp-row .tp-rank { color: var(--gold, #ffd75e); font-weight: bold; min-width: 2ch; }
+.tp-row .tp-name { flex: 1; }
+.trial-card.running { border-color: var(--gold); }
+.trial-card .ghost-btn { font-size: 0.75rem; padding: 4px 10px; }
+
+/* ---- M6 polish: notation radios + sps sparkline ---- */
+.notation-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.notation-row label {
+  display: inline-flex; align-items: center; gap: 5px;
+  cursor: pointer; color: var(--text-dim, #aab);
+}
+.notation-row input[type="radio"] { accent-color: var(--gold, #ffd75e); cursor: pointer; }
+
+.sparkline-block { margin-bottom: 18px; }
+#sps-sparkline {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  width: 260px; height: 60px; display: block;
+}
+
+/* ---------- Volume slider (audio feel pack) ---------- */
+.volume-row input[type="range"] {
+  flex: 1; max-width: 180px;
+  accent-color: var(--gold, #ffd75e);
+  cursor: pointer;
+}
+
+/* ---------- Reduced motion (accessibility) ----------
+   The JS side also gates particle spawns via the reducedMotion flag. */
+@media (prefers-reduced-motion: reduce) {
+  #star-button { animation: none !important; }
+  .toast { animation: none !important; }
+  .spark, .float-num { animation-duration: 0.01s !important; }
+}
+
+/* ---------- Cosmic Codex ---------- */
+.codex-card { text-align: left; }
+.codex-card .u-desc { white-space: normal; line-height: 1.45; }
+.locked-codex { opacity: 0.55; filter: grayscale(0.5); font-style: italic; cursor: default; }
+
+/* ---------- Ascension (Wave 4) ---------- */
+.ascend-hero {
+  background: linear-gradient(160deg, rgba(181, 124, 255, 0.14), rgba(124, 140, 255, 0.06));
+  border-color: rgba(181, 124, 255, 0.4);
+}
+.ascend-hero h2 { color: var(--accent2); }
+.ascend-hero .prestige-stats b { color: var(--accent2); }
+#ascend-button {
+  font: inherit;
+  font-weight: 800;
+  padding: 10px 26px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(181, 124, 255, 0.55);
+  background: linear-gradient(180deg, rgba(181, 124, 255, 0.25), rgba(124, 140, 255, 0.15));
+  color: var(--text);
+  cursor: pointer;
+}
+#ascend-button:disabled { opacity: 0.45; cursor: not-allowed; }
+#ascend-button:not(:disabled):hover { filter: brightness(1.15); }
+
+.essence-chip {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  color: var(--accent2);
+  border: 1px solid rgba(181, 124, 255, 0.45);
+  background: rgba(181, 124, 255, 0.1);
+}
+
+.perk-tree {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.perk-branch { display: flex; flex-direction: column; gap: 8px; }
+.perk-branch h4 {
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  color: var(--accent2);
+  margin-bottom: 2px;
+}
+.perk-card { text-align: left; }
+.perk-card.locked-perk { opacity: 0.5; filter: grayscale(0.6); cursor: not-allowed; }
+
+@media (max-width: 780px) {
+  .perk-tree { grid-template-columns: 1fr; }
+}
+
+/* ---------- Daily gifts ---------- */
+.gift-badge {
+  position: relative;
+  border: 1px solid rgba(255, 209, 102, 0.45);
+  background: rgba(255, 209, 102, 0.08);
+  cursor: pointer;
+  font: inherit;
+}
+.gift-badge:hover { filter: brightness(1.15); }
+.gift-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ff5c5c;
+  box-shadow: 0 0 6px rgba(255, 92, 92, 0.8);
+}
+
+/* ---------- Production share (Stats tab) ---------- */
+.share-block { margin-top: 14px; }
+.share-row {
+  display: grid;
+  grid-template-columns: 150px 1fr 52px;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 0;
+}
+.share-name { font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.share-bar {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+.share-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+}
+.share-pct { font-size: 0.8rem; text-align: right; color: var(--dim); }
+
+@media (max-width: 780px) {
+  .share-row { grid-template-columns: 110px 1fr 46px; }
 }
