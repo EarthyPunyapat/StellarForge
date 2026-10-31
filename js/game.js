@@ -236,6 +236,11 @@ const ACHIEVEMENTS = [
   { id: 'sps1t',      name: 'Engine of Everything', desc: 'Reach 1 trillion stardust per second.',    check: () => derived.sps >= 1e12 },
   // Wave 5 8th feat — the id proposed in the work-log for arbitration ("Hexathlon")
   { id: 'trials6',    name: 'Hexathlon',        desc: 'Complete all six Cosmic Trials.',              check: s => CHALLENGES.every(c => s.trialsDone && s.trialsDone[c.id]) },
+  // Wave 6: star-chart feats
+  { id: 'charts5',    name: 'Sky Reader',       desc: 'Complete 5 Star Charts.',                      check: s => s.chartsCaught >= 5 },
+  { id: 'charts25',   name: 'Constellation Cartographer', desc: 'Complete 25 Star Charts.',           check: s => s.chartsCaught >= 25 },
+  { id: 'charts100',  name: 'Master of Heavens', desc: 'Complete 100 Star Charts.',                   check: s => s.chartsCaught >= 100 },
+  { id: 'charts-perfect', name: 'Flawless Sky',  desc: 'Perfectly trace a Star Chart (half the window to spare).', check: s => s.perfectCharts >= 1 },
 ];
 
 const NEWS = [
@@ -282,9 +287,24 @@ const GOLDEN_FLIGHT_MS = 8000;         // time the golden star takes to drift ac
 const GOLDEN_RADIUS = 13;              // drawn radius on the canvas
 const GOLDEN_HIT_FUDGE = 12;           // extra clickable forgiveness in px
 
+/* ---------- Star Charts event (Wave 6) ---------- */
+const CHART_SPAWN_MIN_MS = 180000;     // constellation cadence floor
+const CHART_SPAWN_MAX_MS = 360000;     // …and ceiling
+const CHART_WINDOW_MS = 12000;         // time to click every node in order
+const CHART_HIT_RADIUS = 18;           // pointerdown hit-test radius per node
+const CHART_VIEWPORT_SPAN = 0.65;      // nodes live in the central 65% of the sky
+const CHART_MIN_NODES = 4;
+const CHART_MAX_NODES = 6;
+
 // Deliberately OUTSIDE `state`: buffs are session-only and must never persist
 // through save/load/reload. Shape while active: { until:<epoch ms>, mult }
 let goldenBuff = null;
+
+// Session-only chartState module binding (Wave 6): an in-flight constellation.
+// NEVER saved — a reload simply dissolves any unfinished chart.
+// Shape while active: { nodes:[{x,y}], next:0, born:<perf ms>, deadline:<perf ms>,
+//                       fading:false, fadeStart }
+let chartState = null;
 
 
 /* =====================  RESEARCH LAB  ===================== */
@@ -425,6 +445,7 @@ const PERKS = [
   { id: 'overclock',          branch: 'meta',       tier: 3, icon: '⚡', name: 'Overclock',           desc: 'Automators act every 0.5s instead of every 2s.',                cost: 6,  max: 1 },
   { id: 'auto-ascend',        branch: 'meta',       tier: 4, icon: '♾️', name: 'Auto Ascend',         desc: 'Unlocks a settings toggle that ascends automatically once ≥10 ✧ pends.', cost: 20, max: 1 },
   { id: 'singularity-engine', branch: 'meta',       tier: 5, icon: '🔮', name: 'Singularity Engine',  desc: 'All production ×10.',                                           cost: 15, max: 1 },
+  { id: 'auto-lab',           branch: 'meta',       tier: 6, icon: '🧪', name: 'Auto-Lab',            desc: 'Research auto-starts the cheapest affordable project when idle.', cost: 25, max: 1 }, // Wave 6: meta-tier continuation
 ];
 const PERK_BY_ID = {};
 for (const p of PERKS) PERK_BY_ID[p.id] = p;
@@ -679,6 +700,13 @@ function defaultState() {
     buyAmount: 1,        // 1 | 10 | 100 | 'max'
     sound: true,
     volume: 70,          // master volume 0-100 (WebAudio feel pack)
+    // Wave 6: economy + theme + star-chart counters
+    chartsCaught: 0,     // constellations completed (persisted lifetime count)
+    chartsAttempted: 0,  // constellations attempted (spawned) — persisted
+    perfectCharts: 0,    // completions with >=50% window remaining
+    sellMode: false,     // 'Enable selling' settings toggle (default OFF)
+    autoLab: false,      // auto-lab perk toggle (visible once owned)
+    theme: 'cosmic',     // 'cosmic' | 'ember' | 'verdant'
     particles: true,
     lastSaved: Date.now(),
     startedAt: Date.now(),
@@ -853,6 +881,42 @@ function buyGenerator(i) {
   recalc();
   renderGenerators(true);
   renderUpgrades();
+  return true;
+}
+
+/* ---------- selling (Wave 6, 'Enable selling' toggle) ---------- */
+
+// PURE: refund for selling `amt` units from `owned` — 50% of the geometric
+// cost of those units AT POST-SALE ownership (start = r^(owned-amt)).
+function sellRefund(i, owned, amt) {
+  const n = Math.max(0, Math.min(amt, owned)); // never below zero
+  if (!(n > 0)) return 0;
+  const r = costGrowth();
+  const base = GENERATORS[i].baseCost * costReduction();
+  const start = Math.pow(r, owned - n);
+  return 0.5 * base * start * (Math.pow(r, n) - 1) / (r - 1);
+}
+
+// How many the ✕ click would sell: current ×1/×10/×100/max semantics clamped to owned.
+function sellAmountFor(i) {
+  return state.buyAmount === 'max' ? state.gens[i] : Math.min(state.buyAmount, state.gens[i]);
+}
+
+function sellGenerator(i) {
+  if (!state.sellMode) return false; // master toggle off: no selling ever
+  const amt = sellAmountFor(i);
+  if (!(amt > 0)) return false;
+  const refund = sellRefund(i, state.gens[i], amt);
+  state.gens[i] -= amt;
+  state.stardust += refund;
+  state.lifetimeRun += refund;
+  state.lifetimeAll += refund;
+  SFX.sellThunk();
+  recalc();
+  renderGenerators(true);
+  renderUpgrades(); // affordability may have shifted
+  saveGame();
+  toast('💸 Generators sold', `<b>×${amt} ${GENERATORS[i].name}</b> refunded <b>${fmt(refund)}</b> stardust.`);
   return true;
 }
 
@@ -1040,6 +1104,13 @@ function applyLoadedState(data) {
   // Wave 5: slot + changelog markers
   state.slot = Math.min(3, Math.max(1, saneNumber(state.slot, true) || 1));
   state.seenChangelogVer = (typeof state.seenChangelogVer === 'string') ? state.seenChangelogVer : null;
+  // Wave 6: chart counters, economy toggles, theme whitelist
+  state.chartsCaught = saneNumber(state.chartsCaught, true);
+  state.chartsAttempted = saneNumber(state.chartsAttempted, true);
+  state.perfectCharts = saneNumber(state.perfectCharts, true);
+  state.sellMode = !!state.sellMode;
+  state.autoLab = !!state.autoLab;
+  if (!['cosmic', 'ember', 'verdant'].includes(state.theme)) state.theme = 'cosmic';
   // heal codex unlock/read maps: whitelist against known entry ids only
   const __codexIds = new Set(CODEX.map(c => c.id));
   state.codex = {};
@@ -1067,25 +1138,53 @@ function applyLoadedState(data) {
   state.v = SAVE_VERSION;
 }
 
-function grantOfflineProgress() {
+// PURE (Wave 6): format the away report from collected events.
+// Event shapes: {type:'offline', amount, duration, capped, rate}
+//               {type:'research', names:[...]} | {type:'dailyReady'}
+function buildAwayReport(events) {
+  if (!Array.isArray(events)) events = [];
+  const parts = [];
+  for (const ev of events) {
+    if (!ev || !ev.type) continue;
+    if (ev.type === 'offline') {
+      parts.push(
+        '🌙 Away for <b>' + fmtTime(ev.duration) + '</b>' +
+        ' — your generators kept working at ' + Math.round((ev.rate || 0) * 100) + '%' +
+        (ev.capped ? ' <span class="dim">(capped)</span>' : '') +
+        ':<br><span style="font-size:1.4rem"><b>✨ ' + fmt(ev.amount) + ' stardust</b></span>'
+      );
+    } else if (ev.type === 'research') {
+      const names = (ev.names || []).filter(Boolean);
+      if (names.length) parts.push('🔬 Research completed while away:<br><b>' + names.join('</b>, <b>') + '</b>');
+    } else if (ev.type === 'dailyReady') {
+      parts.push('🎁 A daily gift is ready to claim.');
+    }
+  }
+  return parts.join('<br><br>');
+}
+
+function grantOfflineProgress(awayInfo) {
+  awayInfo = awayInfo || {};
   const away = (Date.now() - state.lastSaved) / 1000;
-  if (away < 60) return;
   recalc();
-  if (derived.sps <= 0) return;
-  const { capHours, rate } = offlineCapAndRate(); // dream / chrono-dampeners / time-vault stacking
-  const effective = Math.min(away, capHours * 3600);
-  const gain = derived.sps * effective * rate;
-  if (gain <= 0) return;
-  state.stardust += gain;
-  state.lifetimeRun += gain;
-  state.lifetimeAll += gain;
-  state.gotOffline = true;
-  showModal(
-    '🌙 While you were away…',
-    `You were gone for <b>${fmtTime(away)}</b>.<br>Your generators kept working at ${Math.round(rate * 100)}% efficiency` +
-    `${away > effective ? ` (capped at ${capHours}h)` : ''} and forged<br><br>` +
-    `<span style="font-size:1.4rem"><b>✨ ${fmt(gain)} stardust</b></span>`
-  );
+  const events = [];
+  if (away >= 60 && derived.sps > 0) {
+    const { capHours, rate } = offlineCapAndRate(); // dream / chrono-dampeners / time-vault stack
+    const effective = Math.min(away, capHours * 3600);
+    const gain = derived.sps * effective * rate;
+    if (gain > 0) {
+      state.stardust += gain;
+      state.lifetimeRun += gain;
+      state.lifetimeAll += gain;
+      state.gotOffline = true;
+      events.push({ type: 'offline', amount: gain, duration: away, capped: away > effective, rate });
+    }
+  }
+  const rNames = Array.isArray(awayInfo.researchNames) ? awayInfo.researchNames : [];
+  if (rNames.length) events.push({ type: 'research', names: rNames });
+  if (awayInfo.dailyReady) events.push({ type: 'dailyReady' });
+  if (!events.length) return; // zero events: skip the modal entirely
+  showModal('🌙 While you were away…', buildAwayReport(events)); // Wave 6: single summary modal
 }
 
 function exportSave() {
@@ -1726,6 +1825,12 @@ const SFX = {
   prestige()     { tone(220, 0.8, 'sine', 0.055, 0, 1760); },
   trialSuccess() { [392, 523, 659, 784, 1047].forEach((f, i) => tone(f, 0.16, 'triangle', 0.05, i * 0.1)); },
   trialFail()    { [330, 262, 196].forEach((f, i) => tone(f, 0.22, 'sawtooth', 0.04, i * 0.14)); },
+  // Wave 6: star charts + selling
+  chartPlink(i)  { tone(660 * Math.pow(1.1225, Math.min(i, 7)), 0.14, 'sine', 0.05); }, // rising pitch per node index
+  chartComplete(){ SFX.achievement(); },                       // reuse the achievement arpeggio
+  chartFanfare() { [659, 831, 988, 1319].forEach((f, i) => tone(f, 0.2, 'sine', 0.05, i * 0.09)); },
+  chartFizzle()  { tone(110, 0.28, 'sawtooth', 0.04); },       // low thud
+  sellThunk()    { tone(98, 0.15, 'square', 0.06); },          // low thunk on generator sale
 };
 
 function clickBlip() {
@@ -1802,6 +1907,84 @@ function collectGoldenStar(x, y) {
   saveGame(); // persist the catch immediately so a refresh can't lose it
 }
 
+/* =====================  STAR CHARTS LOGIC (Wave 6)  ===================== */
+
+// PURE: node placement inside the central 65% of a w×h sky.
+function chartNewNodes(w, h, count) {
+  const n = Math.max(CHART_MIN_NODES, Math.min(CHART_MAX_NODES, count || (CHART_MIN_NODES + Math.floor(Math.random() * 3))));
+  const mx = w * (1 - CHART_VIEWPORT_SPAN) / 2;
+  const my = h * (1 - CHART_VIEWPORT_SPAN) / 2;
+  const nodes = [];
+  for (let i = 0; i < n; i++) {
+    nodes.push({ x: mx + Math.random() * (w * CHART_VIEWPORT_SPAN), y: my + Math.random() * (h * CHART_VIEWPORT_SPAN) });
+  }
+  return nodes;
+}
+
+// PURE: index of whichever node sits within hit radius of (x,y), else -1.
+function chartHitNode(nodes, x, y) {
+  for (let i = 0; i < nodes.length; i++) {
+    if (Math.hypot(x - nodes[i].x, y - nodes[i].y) <= CHART_HIT_RADIUS) return i;
+  }
+  return -1;
+}
+
+// PURE: fraction of the catch window still remaining, clamped to [0,1].
+function chartRemainingFraction(deadline, nowMs) {
+  return Math.max(0, Math.min(1, (deadline - nowMs) / CHART_WINDOW_MS));
+}
+
+// PURE: reward tier by remaining-time fraction f.
+//   f >= 0.5  -> PERFECT (essence +1 + fanfare)
+//   f >= 0.25 -> surge ×15 for 45s
+//   else      -> standard lump min(0.2*bank, 2400*sps) + 150
+function chartRewardTier(f) {
+  if (f >= 0.5) return 'perfect';
+  if (f >= 0.25) return 'surge';
+  return 'lump';
+}
+
+// PURE: lump payout for a chart (consolation pct/cap or standard), mirroring goldenLumpReward's shape.
+function chartLumpReward(bank, sps, pct, capSecs, base) {
+  return Math.min(bank * pct, capSecs * sps) + base;
+}
+
+// Applies a resolved chart outcome to state/UI. Outcome shapes:
+//   { kind:'complete', tier } | { kind:'fizzle' }
+function resolveChartOutcome(outcome, x, y) {
+  if (outcome.kind === 'complete') {
+    state.chartsCaught++;
+    if (outcome.tier === 'perfect') {
+      state.perfectCharts++;
+      state.essence += 1; // ascensionCount >= 0 always allows the ✧ drip
+      toast('✨ Perfect Tracing!', `<b>+1 ✧ Cosmic Essence</b> — the heavens applaud your precision.`);
+      spawnFloat(x, y, '+1 ✧', true);
+      SFX.chartFanfare();
+    } else if (outcome.tier === 'surge') {
+      goldenBuff = { until: Date.now() + 45000, mult: 15 }; // shares the single session buff slot
+      toast('🌟 Stellar Surge!', '<b>×15 production</b> for 45s');
+      spawnFloat(x, y, '⚡ ×15!', true);
+    } else {
+      const lump = chartLumpReward(state.stardust, derived.sps, 0.2, 2400, 150);
+      state.stardust += lump;
+      state.lifetimeRun += lump;
+      state.lifetimeAll += lump;
+      toast('✨ Chart Complete!', `<b>+${fmt(lump)}</b> stardust traced from the stars.`);
+      spawnFloat(x, y, '+' + fmt(lump, true), true);
+    }
+    SFX.chartComplete();
+  } else { // fizzle: wrong node or timeout — tiny consolation
+    const lump = chartLumpReward(state.stardust, derived.sps, 0.05, 600, 25);
+    state.stardust += lump;
+    state.lifetimeRun += lump;
+    state.lifetimeAll += lump;
+    SFX.chartFizzle();
+  }
+  recalc();
+  renderResources();
+  saveGame();
+}
+
 /* =====================  RESEARCH LAB LOGIC  ===================== */
 
 // One project at a time; deducts cost and schedules completion by wall clock
@@ -1829,7 +2012,32 @@ function tickResearchCheck() {
   if (def) toast('🔬 Research complete!', `<b>${def.icon} ${def.name}</b> — ${def.desc}`);
   SFX.research();
   renderLab();
-  return true;
+  return [def && def.name].filter(Boolean); // Wave 6: names for the away report
+}
+
+/* ---------- Auto-Lab perk (Wave 6) ---------- */
+
+// PURE-ish: cheapest undone research the bank can afford right now, or null.
+function cheapestAutoResearch() {
+  let best = null;
+  for (const r of RESEARCH) {
+    if (state.research.done[r.id]) continue;
+    if (!(state.stardust >= r.cost)) continue;
+    if (!best || r.cost < best.cost) best = r;
+  }
+  return best ? best.id : null;
+}
+
+// Fires only when idle, affordable, enabled, and the tab is visible.
+function canAutoLab() {
+  return perkLvl('auto-lab') > 0 && state.autoLab === true &&
+         !state.research.active && !document.hidden;
+}
+
+function runAutoLab() {
+  if (!canAutoLab()) return false;
+  const id = cheapestAutoResearch();
+  return id ? startResearch(id) : false;
 }
 
 function renderLab() {
@@ -2236,6 +2444,53 @@ function initStarfield() {
     }, forced ? 250 : (min + Math.random() * (max - min)) * goldenSpawnIntervalScale());
   }
 
+  /* ---------- star chart event (Wave 6) ---------- */
+  function spawnChart() {
+    if (chartState) return; // scheduling never overlaps an active chart
+    const nodes = chartNewNodes(canvas.width, canvas.height);
+    const now = performance.now();
+    chartState = { nodes, next: 0, born: now, deadline: now + CHART_WINDOW_MS, fading: false, fadeStart: 0 };
+    state.chartsAttempted++; // an attempt begins the moment the chart appears
+  }
+
+  function completeChart(x, y) {
+    const f = chartRemainingFraction(chartState.deadline, performance.now());
+    const tier = chartRewardTier(f);
+    chartState = null;
+    resolveChartOutcome({ kind: 'complete', tier }, x, y);
+  }
+
+  // Wrong node or timeout: consolation lump + fade-out, then the sky is clear.
+  function fizzleChart(x, y) {
+    resolveChartOutcome({ kind: 'fizzle' }, x, y);
+    if (chartState) chartState = Object.assign({}, chartState, { fading: true, fadeStart: performance.now() });
+  }
+
+  // Self-rescheduling chain, fully independent of the golden star timer.
+  function scheduleChart() {
+    setTimeout(() => {
+      spawnChart();
+      scheduleChart();
+    }, CHART_SPAWN_MIN_MS + Math.random() * (CHART_SPAWN_MAX_MS - CHART_SPAWN_MIN_MS));
+  }
+
+  // Registered BEFORE the golden-star listener so charts win any overlap.
+  canvas.addEventListener('pointerdown', ev => {
+    if (!chartState || chartState.fading) return;
+    const rect = canvas.getBoundingClientRect();
+    const cx = ev.clientX - rect.left, cy = ev.clientY - rect.top;
+    const hit = chartHitNode(chartState.nodes, cx, cy);
+    if (hit === -1) return; // empty sky: golden star keeps its chance
+    ev.stopImmediatePropagation(); // click belongs to the chart
+    if (hit !== chartState.next) {
+      fizzleChart(ev.clientX, ev.clientY); // wrong order — fizzle
+      return;
+    }
+    SFX.chartPlink(chartState.next); // rising pitch per index
+    chartState.next++;
+    if (chartState.next >= chartState.nodes.length) completeChart(ev.clientX, ev.clientY);
+  });
+
   // clickable only during flight; decorative white shooting stars are NOT
   canvas.addEventListener('pointerdown', ev => {
     if (!golden || !golden.t0) return;
@@ -2316,15 +2571,55 @@ function initStarfield() {
           ctx.fill();
         }
       }
+      /* ---------- star chart render (Wave 6) ---------- */
+      if (chartState) {
+        const nowC = t || performance.now();
+        if (!chartState.fading && nowC >= chartState.deadline) {
+          fizzleChart(-1, -1); // window lapsed
+        }
+        let cAlpha = 1;
+        if (chartState && chartState.fading) {
+          cAlpha = Math.max(0, 1 - (nowC - chartState.fadeStart) / 450);
+          if (cAlpha <= 0) chartState = null;
+        }
+        if (chartState) {
+          // Static render: no motion of its own, so reducedMotion is honored by
+          // design; no particle motes are emitted for charts at all.
+          ctx.globalAlpha = cAlpha;
+          ctx.strokeStyle = 'rgba(124, 140, 255, 0.35)'; // faint connecting lines
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          chartState.nodes.forEach((n, i) => (i ? ctx.lineTo(n.x, n.y) : ctx.moveTo(n.x, n.y)));
+          ctx.stroke();
+          ctx.textAlign = 'center';
+          chartState.nodes.forEach((n, i) => {
+            ctx.globalAlpha = cAlpha * (i < chartState.next ? 0.25 : 1); // traced nodes dim out
+            ctx.fillStyle = '#b57cff';
+            ctx.font = '16px system-ui, sans-serif';
+            ctx.fillText('✦', n.x, n.y);
+            ctx.font = '10px monospace';
+            ctx.fillStyle = '#e8ecff';
+            ctx.fillText(String(i), n.x + 11, n.y - 9); // index label = click order
+          });
+          ctx.globalAlpha = 1;
+        }
+      }
       ctx.globalAlpha = 1;
     }
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
   scheduleGoldenStar(true);
+  scheduleChart(); // Wave 6: independent constellation cadence
 }
 
 /* =====================  WIRING  ===================== */
+
+// Wave 6 themes: body[data-theme] drives the CSS var overrides
+// ('cosmic' keeps the :root defaults; 'ember'/'verdant' re-hue accents only).
+function applyTheme() {
+  document.body.dataset.theme = state.theme;
+}
 
 function initUI() {
   // star
@@ -2439,12 +2734,14 @@ function initUI() {
 function boot() {
   migrateLegacySave(); // Wave 5: pre-slot save lands in slot 1 exactly once
   loadGame();
+  applyTheme(); // Wave 6: theme is healed during load; paint it before first render
   recalc();
-  tickResearchCheck(); // complete any project that finished while the tab was closed
+  const awayResearch = tickResearchCheck() || []; // complete any project that finished while the tab was closed
   buildGeneratorDom();
   initUI();
   renderAll();
-  grantOfflineProgress();
+  // Wave 6: single away-summary modal (offline gains + finished research + gift hint)
+  grantOfflineProgress({ researchNames: awayResearch, dailyReady: dailyGiftReady() });
   recalc();
   renderAll();
   initStarfield();
